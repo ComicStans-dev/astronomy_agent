@@ -10,6 +10,16 @@ import json # Add json for loading equipment specs
 from dotenv import load_dotenv
 from pathlib import Path
 
+# Add rich library for beautiful terminal output
+from rich.console import Console
+from rich.panel import Panel
+from rich.markdown import Markdown
+from rich.text import Text
+from rich.progress import Progress, SpinnerColumn, TextColumn
+
+# Initialize rich console
+console = Console()
+
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
@@ -285,128 +295,111 @@ Target Audience: PhD-level physics/optics understanding, but new to practical am
 
 # --- Main Execution ---
 def run_astronomy_assistant():
-    """Main function to run the astronomy assistant."""
-    print("--- Starting Astronomy Assistant ---")
-
-    # === API Key Verification ===
-    # Check if API keys are loaded from .env file
+    """Main execution function for the astronomy assistant."""
+    
+    console.print(Panel.fit("[bold blue]🔭 Astronomy Assistant[/bold blue]", title="Welcome", subtitle="Powered by Gemini AI"))
+    
+    # Check for API keys (critical)
     if not GEMINI_API_KEY:
-        print("\nError: Gemini API Key is missing from environment variables.")
-        print("Please create or update your .env file with a valid GEMINI_API_KEY.")
-        print("Example:")
-        print("GEMINI_API_KEY=your_api_key_here")
-        print("\nYou can get a key from: https://makersuite.google.com/app/apikey")
-        logging.error("Exiting: Gemini API Key not found in environment variables.")
-        return  # Exit if no valid key
-
+        console.print("[bold red]❌ Error: Gemini API key not found![/bold red]")
+        console.print("[yellow]Please set the GEMINI_API_KEY environment variable or configure it in the script.[/yellow]")
+        return
+    
     if not WEATHER_API_KEY:
-        print("\nError: OpenWeatherMap API Key is missing from environment variables.")
-        print("Please create or update your .env file with a valid WEATHER_API_KEY.")
-        print("Example:")
-        print("WEATHER_API_KEY=your_api_key_here")
-        print("\nYou can get a key from: https://openweathermap.org/api")
-        logging.error("Exiting: Weather API Key not found in environment variables.")
-        return  # Exit if no valid weather key
-
-    print(f"API keys loaded successfully")
-    logging.info("API keys successfully loaded from environment variables")
-    # =========================
-
-    # === Load Equipment Specs ===
-    equipment_specs = load_equipment_specs() # Load from default path
-    if not equipment_specs:
-        print("Warning: Could not load equipment specifications. Proceeding without them.")
-        logging.warning("Equipment specs file not found or invalid. Prompt will not include equipment details.")
-    # ==========================
-
-    llm = None # Initialize llm to None
+        console.print("[bold yellow]⚠️ Warning: Weather API key not found![/bold yellow]")
+        console.print("[yellow]Weather data will not be available. Please set the WEATHER_API_KEY environment variable.[/yellow]")
+    
+    # Display configuration
+    console.print("\n[bold cyan]📍 Location:[/bold cyan] " + LOCATION_NAME)
+    console.print(f"[cyan]   Coordinates: {LATITUDE}, {LONGITUDE}[/cyan]")
+    
+    # Initialize LLM provider
     try:
-        # Now, use the verified keys when initializing providers and fetching data
-        logging.info("Initializing LLM provider: Gemini")
-        llm = GeminiProvider(GEMINI_API_KEY) # Use the verified key
-
-        current_date = datetime.date.today().isoformat()
-        logging.info(f"Getting weather for {LOCATION_NAME} ({LATITUDE:.4f}, {LONGITUDE:.4f}) on {current_date}")
-        weather_data = get_weather_data(WEATHER_API_KEY, LATITUDE, LONGITUDE) # Use the verified key
-        logging.info(f"Weather data received: {weather_data}")
-
-        # Check if weather fetch failed and provide feedback
-        if weather_data.get("error"):
-             weather_error_msg = weather_data.get("description", "Unknown weather error")
-             print(f"\nWarning: Could not retrieve valid weather data ({weather_error_msg}).")
-             print("Proceeding with error information for the prompt, recommendations may be limited.")
-             logging.warning(f"Failed to retrieve weather: {weather_error_msg}. Prompt will use error info.")
-             # Ensure structure for prompt generation even if error occurred
-             weather_data = {
-                 "description": weather_error_msg,
-                 "cloud_cover_percent": -1,
-                 "seeing_conditions": "Unknown",
-                 "temperature_c": -999,
-                 "humidity_percent": -1,
-                 "wind_speed_mps": -1,
-                 "error": weather_data.get("error") # Preserve the error type
-             }
-
-        # Create the prompt, now including equipment specs
-        logging.info("Generating astronomy prompt including equipment specs...")
-        astro_prompt = create_astronomy_prompt(LOCATION_NAME, LATITUDE, LONGITUDE, current_date, weather_data, equipment_specs)
-        # Ensure this multi-line comment is correctly formatted and doesn't cause syntax errors
-        # print(f"\n--- DEBUG: Generated Prompt ---\n{astro_prompt}\n-----------------------------\n")
-
-        logging.info("Sending prompt to Gemini for astronomy advice...")
-        response_text = llm.generate_response(astro_prompt)
-
-        # Print the results
-        print("\n--- Astronomy Assistant Advice ---")
-        print(f"Date: {current_date}")
-        print(f"Location: {LOCATION_NAME} ({LATITUDE:.4f}, {LONGITUDE:.4f})") # Format coords
-        # Display weather info used in prompt (might include error state)
-        temp_c = weather_data.get('temperature_c', 'N/A')
-        cloud = weather_data.get('cloud_cover_percent', 'N/A')
-        seeing = weather_data.get('seeing_conditions', 'N/A')
-        desc = weather_data.get('description', 'N/A')
-        weather_summary = f"Desc: {desc}, Cloud: {cloud}%, Seeing: {seeing}, Temp: {temp_c}°C"
-        if weather_data.get("error"):
-             weather_summary = f"Weather Status: Error - {weather_data.get('description', 'Unknown Error')}"
-        print(f"Weather Used: {weather_summary}")
-        print("---")
-        print(response_text)
-        print("---------------------------------\n")
-
-        # Log usage info after successful generation
-        if llm:
-            usage_info = llm.get_usage_info()
-            logging.info(f"LLM Usage Info: {usage_info}")
-            # print(f"LLM Usage: Tokens={usage_info.get('total_tokens', 'N/A')}, Latency={usage_info.get('latency_seconds', 'N/A')}s")
-
-    except ValueError as ve:
-        # Catch specific errors like API key issues or blocked prompts from GeminiProvider
-        logging.error(f"Configuration or Value Error: {ve}")
-        print(f"\nError: {ve}")
-    except ConnectionError as ce:
-        # Catch connection issues during API calls (Gemini or Weather)
-        logging.error(f"Connection Error: {ce}")
-        print(f"\nError: Could not connect to a required service - {ce}")
+        with console.status("[bold green]🧠 Initializing Gemini AI...[/bold green]"):
+            llm = GeminiProvider(GEMINI_API_KEY)
+        console.print("[bold green]✅ Gemini AI initialized successfully[/bold green]")
     except Exception as e:
-        # Catch any other unexpected errors during the main flow
-        logging.error(f"Astronomy assistant failed unexpectedly: {e}", exc_info=True)
-        print(f"\nAn unexpected error occurred: {e}")
-    finally:
-        # Optional: Log usage even if an error occurred after the LLM call but before logging
-        if llm and llm.get_usage_info():
-            usage_info = llm.get_usage_info()
-            if usage_info.get("error") or usage_info.get("warning"):
-                logging.warning(f"LLM Usage Info (potentially partial due to error): {usage_info}")
+        console.print(f"[bold red]❌ Error initializing Gemini AI: {e}[/bold red]")
+        return
+    
+    # Get current date/time
+    current_date = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    console.print(f"\n[bold cyan]📅 Current Date/Time:[/bold cyan] {current_date}")
+    
+    # Load equipment specifications
+    with console.status("[bold green]📷 Loading equipment specifications...[/bold green]"):
+        equipment_specs = load_equipment_specs()
+    
+    if equipment_specs:
+        console.print("[bold green]✅ Equipment specifications loaded successfully[/bold green]")
+        # Display summary of equipment
+        if "imaging_telescope" in equipment_specs:
+            console.print(f"[cyan]   🔭 Telescope: {equipment_specs['imaging_telescope']['model']}[/cyan]")
+        if "imaging_camera" in equipment_specs:
+            console.print(f"[cyan]   📷 Camera: {equipment_specs['imaging_camera']['model']}[/cyan]")
+        if "mount" in equipment_specs:
+            console.print(f"[cyan]   🛠️ Mount: {equipment_specs['mount']['model']}[/cyan]")
+    else:
+        console.print("[bold yellow]⚠️ Warning: No equipment specifications found![/bold yellow]")
+        console.print("[yellow]   Using default recommendations without equipment-specific advice.[/yellow]")
+    
+    # Get weather data
+    if WEATHER_API_KEY:
+        with console.status("[bold green]☁️ Fetching weather data...[/bold green]"):
+            weather = get_weather_data(WEATHER_API_KEY, LATITUDE, LONGITUDE)
+        
+        if "error" not in weather:
+            console.print("[bold green]✅ Weather data retrieved successfully[/bold green]")
+            console.print(f"[cyan]   ☁️ Cloud Cover: {weather['cloud_cover_percent']}%[/cyan]")
+            console.print(f"[cyan]   🌡️ Temperature: {weather['temperature_c']}°C[/cyan]")
+            console.print(f"[cyan]   💧 Humidity: {weather['humidity_percent']}%[/cyan]")
+            console.print(f"[cyan]   👁️ Seeing Conditions: {weather['seeing_conditions']}[/cyan]")
+            console.print(f"[cyan]   📝 Description: {weather['description']}[/cyan]")
+        else:
+            console.print(f"[bold yellow]⚠️ Warning: {weather['description']}[/bold yellow]")
+            weather = {
+                "description": "Weather data unavailable",
+                "cloud_cover_percent": -1,
+                "seeing_conditions": "Unknown",
+                "temperature_c": -999,
+                "humidity_percent": -1
+            }
+    else:
+        console.print("[bold yellow]⚠️ Weather data not available (missing API key)[/bold yellow]")
+        weather = {
+            "description": "Weather data unavailable (no API key)",
+            "cloud_cover_percent": -1,
+            "seeing_conditions": "Unknown",
+            "temperature_c": -999,
+            "humidity_percent": -1
+        }
+    
+    # Create prompt
+    with console.status("[bold green]🧩 Creating astronomy context...[/bold green]"):
+        prompt = create_astronomy_prompt(LOCATION_NAME, LATITUDE, LONGITUDE, current_date, weather, equipment_specs)
+    
+    # Get recommendations from LLM
+    with console.status("[bold green]🔮 Generating astronomy recommendations...[/bold green]") as status:
+        try:
+            recommendations = llm.generate_response(prompt)
+            console.print("[bold green]✅ Recommendations generated[/bold green]\n")
+            
+            # Display formatted recommendations
+            console.print(Panel.fit(
+                Markdown(recommendations),
+                title="[bold cyan]🌌 Astrophotography Recommendations[/bold cyan]",
+                border_style="cyan"
+            ))
+            
+            usage = llm.get_usage_info()
+            if usage and "latency_seconds" in usage:
+                console.print(f"[dim]Generated in {usage['latency_seconds']} seconds[/dim]")
+        except Exception as e:
+            console.print(f"[bold red]❌ Error generating recommendations: {e}[/bold red]")
+            return
+    
+    console.print("\n[bold blue]Thanks for using Astronomy Assistant! Clear skies! ✨[/bold blue]")
 
-    print("--- Astronomy Assistant Finished ---")
-
+# --- Execution ---
 if __name__ == "__main__":
-    # ... (requests check remains the same)
-    try:
-        import requests
-    except ImportError:
-        print("Error: The 'requests' library is not installed.")
-        print("Please install it using: pip install requests")
-        exit(1)
-    run_astronomy_assistant()
-    # Removed previous complex key checking logic, relying on checks at the start of run_astronomy_assistant 
+    run_astronomy_assistant() 
