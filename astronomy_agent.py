@@ -7,14 +7,24 @@ import time
 from abc import ABC, abstractmethod
 import requests # Add requests for weather API
 import json # Add json for loading equipment specs
+from dotenv import load_dotenv
+from pathlib import Path
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 # --- Configuration ---
-# Attempt to get keys from environment first, then use placeholders
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "AIzaSyB4XasCrezZm4x1gdiT8CLneCyw3pcbHbQ")
-WEATHER_API_KEY = os.getenv("WEATHER_API_KEY", "ca20621df8fd31cbaf40e20a98ce3039")
+# Load environment variables from .env file
+# Try to find .env in the current directory or in the parent directory
+env_path = Path('.env')
+if not env_path.exists():
+    env_path = Path('Astronomy Agent/.env')
+    
+load_dotenv(dotenv_path=env_path)
+
+# Get API keys from environment variables (no default values to avoid hardcoding)
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+WEATHER_API_KEY = os.getenv("WEATHER_API_KEY")
 
 # Location Configuration
 LOCATION_NAME = "Beaverton, Oregon"
@@ -279,28 +289,27 @@ def run_astronomy_assistant():
     print("--- Starting Astronomy Assistant ---")
 
     # === API Key Verification ===
-    # Access the global constants defined at the top
-    global_gemini_key = GEMINI_API_KEY
-    global_weather_key = WEATHER_API_KEY
+    # Check if API keys are loaded from .env file
+    if not GEMINI_API_KEY:
+        print("\nError: Gemini API Key is missing from environment variables.")
+        print("Please create or update your .env file with a valid GEMINI_API_KEY.")
+        print("Example:")
+        print("GEMINI_API_KEY=your_api_key_here")
+        print("\nYou can get a key from: https://makersuite.google.com/app/apikey")
+        logging.error("Exiting: Gemini API Key not found in environment variables.")
+        return  # Exit if no valid key
 
-    # Verify Gemini API Key
-    # Check if the key exists and is not None or empty
-    if not global_gemini_key:
-        print("Error: Gemini API Key is missing (not found in env or default value).")
-        logging.error("Exiting: Gemini API Key not configured correctly.")
-        return # Exit if no valid key
-    else:
-        print(f"Using Gemini API Key starting with: {global_gemini_key[:4]}...")
+    if not WEATHER_API_KEY:
+        print("\nError: OpenWeatherMap API Key is missing from environment variables.")
+        print("Please create or update your .env file with a valid WEATHER_API_KEY.")
+        print("Example:")
+        print("WEATHER_API_KEY=your_api_key_here")
+        print("\nYou can get a key from: https://openweathermap.org/api")
+        logging.error("Exiting: Weather API Key not found in environment variables.")
+        return  # Exit if no valid weather key
 
-    # Verify Weather API Key (using the global one)
-    # Check if the key exists and is not None or empty
-    if not global_weather_key:
-        print("Error: Weather API Key is missing (not found in env or default value).")
-        logging.error("Exiting: Weather API Key not configured correctly.")
-        return # Exit if no valid weather key
-    else:
-        print(f"Using OpenWeatherMap API Key starting with: {global_weather_key[:4]}...")
-        logging.info(f"Using OpenWeatherMap API Key prefix: {global_weather_key[:4]}")
+    print(f"API keys loaded successfully")
+    logging.info("API keys successfully loaded from environment variables")
     # =========================
 
     # === Load Equipment Specs ===
@@ -314,11 +323,11 @@ def run_astronomy_assistant():
     try:
         # Now, use the verified keys when initializing providers and fetching data
         logging.info("Initializing LLM provider: Gemini")
-        llm = GeminiProvider(global_gemini_key) # Use the verified key
+        llm = GeminiProvider(GEMINI_API_KEY) # Use the verified key
 
         current_date = datetime.date.today().isoformat()
         logging.info(f"Getting weather for {LOCATION_NAME} ({LATITUDE:.4f}, {LONGITUDE:.4f}) on {current_date}")
-        weather_data = get_weather_data(global_weather_key, LATITUDE, LONGITUDE) # Use the verified key
+        weather_data = get_weather_data(WEATHER_API_KEY, LATITUDE, LONGITUDE) # Use the verified key
         logging.info(f"Weather data received: {weather_data}")
 
         # Check if weather fetch failed and provide feedback
