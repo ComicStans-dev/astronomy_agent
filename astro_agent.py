@@ -301,7 +301,7 @@ def create_prompt_with_data(location_name: str, base_astro_info: dict, weather: 
                      transit_time_local = transit_time_utc + local_offset
                      transit_time_local_str = transit_time_local.to_datetime().strftime("%H:%M %Z(approx)")
                  except Exception as time_e:
-                     log.warning(f"Could not convert transit time {transit_time_iso} to local: {time_e}")
+                     logging.log.warning(f"Could not convert transit time {transit_time_iso} to local: {time_e}")
                      transit_time_local_str = transit_time_iso + " (UTC)" # Fallback to UTC display
             
             # Format Size
